@@ -1,0 +1,10 @@
+[
+  {"animal": "cat", "text": "Cats are small carnivorous mammals known for agility, retractable claws, and sleeping up to 16 hours a day."},
+  {"animal": "dog", "text": "Dogs are loyal domesticated mammals descended from wolves, widely used for companionship, herding, and guarding."},
+  {"animal": "lion", "text": "Lions are large social big cats living in prides on African savannas; males have a distinctive mane."},
+  {"animal": "elephant", "text": "Elephants are the largest land animals, with long trunks, big ears, and tusks, and they live in matriarchal herds."},
+  {"animal": "horse", "text": "Horses are fast, strong herbivores domesticated for riding, racing, and farm work."},
+  {"animal": "bird", "text": "Birds are feathered vertebrates with wings and beaks; most species can fly and lay eggs in nests."},
+  {"animal": "camel", "text": "Camels are desert mammals with humps that store fat, and they can survive long periods without water."},
+  {"animal": "fish", "text": "Fish are aquatic animals that breathe through gills and swim using fins in oceans, rivers, and lakes."}
+]

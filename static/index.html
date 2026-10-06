@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Multimodal RAG</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--tx:#e6edf3;--mu:#8b949e;--ac:#58a6ff;--ok:#3fb950;--dn:#f85149}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}
+header{padding:16px 24px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
+h1{font-size:18px;margin:0}small,.mu{color:var(--mu)}main{max-width:980px;margin:0 auto;padding:20px}
+nav{display:flex;gap:8px;margin-bottom:18px}
+button,input,textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 12px}
+button{cursor:pointer}button:hover{border-color:var(--ac)}button.on,button.pri{background:var(--ac);border-color:var(--ac);color:#04121f;font-weight:600}
+button.del{color:var(--dn);padding:2px 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.drop{border:2px dashed var(--bd);border-radius:12px;padding:28px;text-align:center;cursor:pointer}
+.drop.hv{border-color:var(--ac)}.drop img{max-height:220px;max-width:100%;border-radius:8px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.grid figure{margin:0;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden;position:relative}
+.grid img{width:100%;height:120px;object-fit:cover;display:block}.grid figcaption{padding:6px 8px;font-size:13px}
+.tag{background:#1f6feb33;color:var(--ac);border-radius:6px;padding:2px 8px;font-size:12px;margin-right:6px}
+.bar{height:6px;background:var(--bd);border-radius:4px;margin-top:8px}.bar i{display:block;height:100%;background:var(--ok);border-radius:4px}
+h3{margin:18px 0 8px;font-size:14px;color:var(--mu);text-transform:uppercase;letter-spacing:.05em}
+input[type=text],textarea{width:100%}.hide{display:none}
+</style></head><body>
+<header><h1>🐾 Multimodal RAG <small>· CLIP + BLIP</small></h1><small id="st">loading…</small></header>
+<main>
+<nav><button data-t="img" class="on">Image search</button><button data-t="txt">Text search</button><button data-t="kb">Knowledge base</button></nav>
+
+<section id="img">
+ <div class="drop" id="drop"><span class="mu">Drop an image here or click to choose</span></div>
+ <input type="file" id="f" accept="image/*" class="hide">
+ <div class="row">
+  <label>Top-K <input type="number" id="k" value="3" min="1" max="10" style="width:64px"></label>
+  <label>α (image↔text) <input type="range" id="a" min="0" max="1" step="0.1" value="0.6"> <b id="av">0.6</b></label>
+  <button class="pri" id="go">Search</button>
+ </div>
+</section>
+<section id="txt" class="hide">
+ <div class="row"><input type="text" id="q" placeholder="e.g. animal that lives in the desert" style="flex:1"><button class="pri" id="qgo">Search</button></div>
+</section>
+<div id="res"></div>
+
+<section id="kb" class="hide">
+ <div class="card"><b>Add text</b>
+  <div class="row"><input type="text" id="ta" placeholder="Animal name" style="width:180px"><input type="text" id="tt" placeholder="Short description (CLIP reads ~77 tokens)" style="flex:1"><button class="pri" id="tadd">Add</button></div></div>
+ <div class="card"><b>Add image</b>
+  <div class="row"><input type="file" id="if" accept="image/*"><input type="text" id="il" placeholder="Label" style="width:180px"><button class="pri" id="iadd">Add</button></div></div>
+ <h3>Texts</h3><div id="tl"></div><h3>Images</h3><div class="grid" id="il2"></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);let file=null;
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct=s=>(s*100).toFixed(1)+"%";
+async function api(u,o){const r=await fetch(u,o);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||r.statusText);return r.json()}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));
+ ["img","txt","kb"].forEach(t=>$(t).classList.toggle("hide",t!==b.dataset.t));
+ $("res").classList.toggle("hide",b.dataset.t==="kb");if(b.dataset.t==="kb")loadKB()});
+$("a").oninput=()=>$("av").textContent=$("a").value;
+const drop=$("drop");drop.onclick=()=>$("f").click();$("f").onchange=e=>setFile(e.target.files[0]);
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("hv")};drop.ondragleave=()=>drop.classList.remove("hv");
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove("hv");setFile(e.dataTransfer.files[0])};
+function setFile(f){if(!f)return;file=f;drop.innerHTML=`<img src="${URL.createObjectURL(f)}">`}
+function render(r){
+ let h="";if(r.caption)h+=`<div class="card"><span class="tag">BLIP caption</span>${esc(r.caption)}</div>`;
+ h+="<h3>Related knowledge</h3>"+(r.texts.map(t=>`<div class="card"><span class="tag">${esc(t.animal)}</span>${esc(t.text)}
+ <div class="bar"><i style="width:${t.score*100}%"></i></div><small>relevance ${pct(t.score)}</small></div>`).join("")||'<p class="mu">No texts.</p>');
+ h+="<h3>Similar images</h3><div class='grid'>"+(r.images.map(i=>`<figure><img src="${i.url}"><figcaption>${esc(i.label)} <small>${pct(i.score)}</small></figcaption></figure>`).join("")||'<p class="mu">No images in KB.</p>')+"</div>";
+ $("res").innerHTML=h}
+const busy=(b,on)=>{b.disabled=on;b.textContent=on?"…":b.dataset.l||(b.dataset.l=b.textContent)};
+$("go").onclick=async()=>{if(!file)return alert("Choose an image first");const b=$("go");b.dataset.l="Search";busy(b,true);
+ try{const fd=new FormData();fd.append("file",file);fd.append("k",$("k").value);fd.append("alpha",$("a").value);
+  render(await api("/api/search/image",{method:"POST",body:fd}))}catch(e){alert(e.message)}b.disabled=false;b.textContent="Search"};
+$("qgo").onclick=async()=>{const q=$("q").value.trim();if(!q)return;
+ try{render(await api("/api/search/text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,k:+$("k").value||3})}))}catch(e){alert(e.message)}};
+async function loadKB(){const d=await api("/api/kb");$("st").textContent=`${d.texts.length} texts · ${d.images.length} images · ${d.device}`;
+ $("tl").innerHTML=d.texts.map(t=>`<div class="card"><span class="tag">${esc(t.animal)}</span>${esc(t.text)} <button class="del" onclick="del('texts','${t.id}')">✕</button></div>`).join("");
+ $("il2").innerHTML=d.images.map(i=>`<figure><img src="${i.url}"><figcaption>${esc(i.label)} <button class="del" onclick="del('images','${i.id}')">✕</button></figcaption></figure>`).join("")}
+async function del(k,id){if(confirm("Delete?")){await api(`/api/kb/${k}/${id}`,{method:"DELETE"});loadKB()}}
+$("tadd").onclick=async()=>{if(!$("ta").value||!$("tt").value)return;
+ await api("/api/kb/text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({animal:$("ta").value,text:$("tt").value})});$("ta").value=$("tt").value="";loadKB()};
+$("iadd").onclick=async()=>{const f=$("if").files[0];if(!f||!$("il").value)return alert("Pick image + label");
+ const fd=new FormData();fd.append("file",f);fd.append("label",$("il").value);
+ try{await api("/api/kb/image",{method:"POST",body:fd});$("if").value=$("il").value="";loadKB()}catch(e){alert(e.message)}};
+loadKB().catch(()=>$("st").textContent="server error");
+</script></body></html>
