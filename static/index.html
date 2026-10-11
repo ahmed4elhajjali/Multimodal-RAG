@@ -1,87 +1,2162 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Multimodal RAG</title>
-<style>
-:root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--tx:#e6edf3;--mu:#8b949e;--ac:#58a6ff;--ok:#3fb950;--dn:#f85149}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}
-header{padding:16px 24px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
-h1{font-size:18px;margin:0}small,.mu{color:var(--mu)}main{max-width:980px;margin:0 auto;padding:20px}
-nav{display:flex;gap:8px;margin-bottom:18px}
-button,input,textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 12px}
-button{cursor:pointer}button:hover{border-color:var(--ac)}button.on,button.pri{background:var(--ac);border-color:var(--ac);color:#04121f;font-weight:600}
-button.del{color:var(--dn);padding:2px 8px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
-.drop{border:2px dashed var(--bd);border-radius:12px;padding:28px;text-align:center;cursor:pointer}
-.drop.hv{border-color:var(--ac)}.drop img{max-height:220px;max-width:100%;border-radius:8px}
-.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-.grid figure{margin:0;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden;position:relative}
-.grid img{width:100%;height:120px;object-fit:cover;display:block}.grid figcaption{padding:6px 8px;font-size:13px}
-.tag{background:#1f6feb33;color:var(--ac);border-radius:6px;padding:2px 8px;font-size:12px;margin-right:6px}
-.bar{height:6px;background:var(--bd);border-radius:4px;margin-top:8px}.bar i{display:block;height:100%;background:var(--ok);border-radius:4px}
-h3{margin:18px 0 8px;font-size:14px;color:var(--mu);text-transform:uppercase;letter-spacing:.05em}
-input[type=text],textarea{width:100%}.hide{display:none}
-</style></head><body>
-<header><h1>🐾 Multimodal RAG <small>· CLIP + BLIP</small></h1><small id="st">loading…</small></header>
-<main>
-<nav><button data-t="img" class="on">Image search</button><button data-t="txt">Text search</button><button data-t="kb">Knowledge base</button></nav>
+<html lang="en">
 
-<section id="img">
- <div class="drop" id="drop"><span class="mu">Drop an image here or click to choose</span></div>
- <input type="file" id="f" accept="image/*" class="hide">
- <div class="row">
-  <label>Top-K <input type="number" id="k" value="3" min="1" max="10" style="width:64px"></label>
-  <label>α (image↔text) <input type="range" id="a" min="0" max="1" step="0.1" value="0.6"> <b id="av">0.6</b></label>
-  <button class="pri" id="go">Search</button>
- </div>
-</section>
-<section id="txt" class="hide">
- <div class="row"><input type="text" id="q" placeholder="e.g. animal that lives in the desert" style="flex:1"><button class="pri" id="qgo">Search</button></div>
-</section>
-<div id="res"></div>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Multimodal RAG Studio · CLIP + BLIP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-card-hover: rgba(24, 34, 53, 0.9);
+      --bg-surface: #0f172a;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      --tx-main: #f8fafc;
+      --tx-sub: #94a3b8;
+      --tx-muted: #64748b;
+      --pri: #6366f1;
+      --pri-glow: rgba(99, 102, 241, 0.25);
+      --pri-hover: #4f46e5;
+      --accent: #06b6d4;
+      --ok: #10b981;
+      --ok-glow: rgba(16, 185, 129, 0.2);
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-<section id="kb" class="hide">
- <div class="card"><b>Add text</b>
-  <div class="row"><input type="text" id="ta" placeholder="Animal name" style="width:180px"><input type="text" id="tt" placeholder="Short description (CLIP reads ~77 tokens)" style="flex:1"><button class="pri" id="tadd">Add</button></div></div>
- <div class="card"><b>Add image</b>
-  <div class="row"><input type="file" id="if" accept="image/*"><input type="text" id="il" placeholder="Label" style="width:180px"><button class="pri" id="iadd">Add</button></div></div>
- <h3>Texts</h3><div id="tl"></div><h3>Images</h3><div class="grid" id="il2"></div>
-</section>
-</main>
-<script>
-const $=id=>document.getElementById(id);let file=null;
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const pct=s=>(s*100).toFixed(1)+"%";
-async function api(u,o){const r=await fetch(u,o);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||r.statusText);return r.json()}
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
- document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));
- ["img","txt","kb"].forEach(t=>$(t).classList.toggle("hide",t!==b.dataset.t));
- $("res").classList.toggle("hide",b.dataset.t==="kb");if(b.dataset.t==="kb")loadKB()});
-$("a").oninput=()=>$("av").textContent=$("a").value;
-const drop=$("drop");drop.onclick=()=>$("f").click();$("f").onchange=e=>setFile(e.target.files[0]);
-drop.ondragover=e=>{e.preventDefault();drop.classList.add("hv")};drop.ondragleave=()=>drop.classList.remove("hv");
-drop.ondrop=e=>{e.preventDefault();drop.classList.remove("hv");setFile(e.dataTransfer.files[0])};
-function setFile(f){if(!f)return;file=f;drop.innerHTML=`<img src="${URL.createObjectURL(f)}">`}
-function render(r){
- let h="";if(r.caption)h+=`<div class="card"><span class="tag">BLIP caption</span>${esc(r.caption)}</div>`;
- h+="<h3>Related knowledge</h3>"+(r.texts.map(t=>`<div class="card"><span class="tag">${esc(t.animal)}</span>${esc(t.text)}
- <div class="bar"><i style="width:${t.score*100}%"></i></div><small>relevance ${pct(t.score)}</small></div>`).join("")||'<p class="mu">No texts.</p>');
- h+="<h3>Similar images</h3><div class='grid'>"+(r.images.map(i=>`<figure><img src="${i.url}"><figcaption>${esc(i.label)} <small>${pct(i.score)}</small></figcaption></figure>`).join("")||'<p class="mu">No images in KB.</p>')+"</div>";
- $("res").innerHTML=h}
-const busy=(b,on)=>{b.disabled=on;b.textContent=on?"…":b.dataset.l||(b.dataset.l=b.textContent)};
-$("go").onclick=async()=>{if(!file)return alert("Choose an image first");const b=$("go");b.dataset.l="Search";busy(b,true);
- try{const fd=new FormData();fd.append("file",file);fd.append("k",$("k").value);fd.append("alpha",$("a").value);
-  render(await api("/api/search/image",{method:"POST",body:fd}))}catch(e){alert(e.message)}b.disabled=false;b.textContent="Search"};
-$("qgo").onclick=async()=>{const q=$("q").value.trim();if(!q)return;
- try{render(await api("/api/search/text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,k:+$("k").value||3})}))}catch(e){alert(e.message)}};
-async function loadKB(){const d=await api("/api/kb");$("st").textContent=`${d.texts.length} texts · ${d.images.length} images · ${d.device}`;
- $("tl").innerHTML=d.texts.map(t=>`<div class="card"><span class="tag">${esc(t.animal)}</span>${esc(t.text)} <button class="del" onclick="del('texts','${t.id}')">✕</button></div>`).join("");
- $("il2").innerHTML=d.images.map(i=>`<figure><img src="${i.url}"><figcaption>${esc(i.label)} <button class="del" onclick="del('images','${i.id}')">✕</button></figcaption></figure>`).join("")}
-async function del(k,id){if(confirm("Delete?")){await api(`/api/kb/${k}/${id}`,{method:"DELETE"});loadKB()}}
-$("tadd").onclick=async()=>{if(!$("ta").value||!$("tt").value)return;
- await api("/api/kb/text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({animal:$("ta").value,text:$("tt").value})});$("ta").value=$("tt").value="";loadKB()};
-$("iadd").onclick=async()=>{const f=$("if").files[0];if(!f||!$("il").value)return alert("Pick image + label");
- const fd=new FormData();fd.append("file",f);fd.append("label",$("il").value);
- try{await api("/api/kb/image",{method:"POST",body:fd});$("if").value=$("il").value="";loadKB()}catch(e){alert(e.message)}};
-loadKB().catch(()=>$("st").textContent="server error");
-</script></body></html>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--tx-main);
+      font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 20%, rgba(6, 182, 212, 0.1) 0%, transparent 35%),
+        radial-gradient(circle at 50% 90%, rgba(139, 92, 246, 0.08) 0%, transparent 45%);
+    }
+
+    header {
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(9, 13, 22, 0.8);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 14px var(--pri-glow);
+    }
+
+    .brand h1 {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand span {
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--tx-sub);
+    }
+
+    .badge-pill.status {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: var(--ok);
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    main {
+      max-width: 1160px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px 20px 80px;
+      flex: 1;
+    }
+
+    /* Top Navigation Tabs */
+    .tabs-nav {
+      display: flex;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(12px);
+      padding: 6px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      gap: 6px;
+      margin-bottom: 28px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: var(--tx-sub);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .tab-btn:hover {
+      color: var(--tx-main);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(6, 182, 212, 0.15));
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Card styling */
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--tx-main);
+    }
+
+    .card-subtitle {
+      font-size: 13px;
+      color: var(--tx-sub);
+      margin-top: 3px;
+    }
+
+    /* Search Submode Switcher */
+    .search-switch {
+      display: inline-flex;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      gap: 4px;
+      margin-bottom: 18px;
+    }
+
+    .switch-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--tx-sub);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .switch-btn.active {
+      background: var(--pri);
+      color: #ffffff;
+      box-shadow: 0 2px 8px var(--pri-glow);
+    }
+
+    /* Dropzone */
+    .dropzone {
+      border: 2px dashed rgba(99, 102, 241, 0.35);
+      border-radius: var(--radius);
+      background: rgba(15, 23, 42, 0.4);
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(6, 182, 212, 0.06);
+      transform: translateY(-1px);
+    }
+
+    .dropzone-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .dropzone-icon {
+      font-size: 38px;
+      filter: drop-shadow(0 4px 10px var(--pri-glow));
+    }
+
+    .dropzone-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--tx-main);
+    }
+
+    .dropzone-hint {
+      font-size: 12px;
+      color: var(--tx-muted);
+    }
+
+    .preview-box {
+      position: relative;
+      max-height: 280px;
+      border-radius: 10px;
+      overflow: hidden;
+      display: inline-block;
+      margin: 0 auto;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border);
+    }
+
+    .preview-box img {
+      max-height: 280px;
+      max-width: 100%;
+      display: block;
+      object-fit: contain;
+    }
+
+    .preview-remove {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      transition: var(--transition);
+    }
+
+    .preview-remove:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+
+    /* Preset Sample Chips */
+    .presets-container {
+      margin-top: 18px;
+    }
+
+    .presets-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--tx-muted);
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .preset-chip {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--tx-sub);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+
+    .preset-chip:hover {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.4);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .preset-chip img {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    /* Controls Bar */
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    .control-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--tx-sub);
+    }
+
+    .control-item label {
+      font-weight: 600;
+      color: var(--tx-main);
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 130px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    input[type="number"],
+    input[type="text"],
+    textarea,
+    select {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--tx-main);
+      padding: 9px 14px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    input[type="number"]:focus,
+    input[type="text"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--pri);
+      box-shadow: 0 0 0 3px var(--pri-glow);
+    }
+
+    .search-input-box {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .search-input-box input {
+      flex: 1;
+      padding: 12px 18px;
+      font-size: 15px;
+      border-radius: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: var(--transition);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn-pri {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: #ffffff;
+      box-shadow: 0 4px 14px var(--pri-glow);
+    }
+
+    .btn-pri:hover {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px var(--pri-glow);
+    }
+
+    .btn-sec {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--border);
+      color: var(--tx-main);
+    }
+
+    .btn-sec:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: var(--danger);
+      color: #ffffff;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Results section */
+    .results-wrap {
+      margin-top: 28px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Grounded Synthesis Card */
+    .synthesis-card {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(6, 182, 212, 0.08));
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: var(--radius);
+      padding: 22px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .synthesis-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: linear-gradient(to bottom, #6366f1, #06b6d4);
+    }
+
+    .synthesis-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #a5b4fc;
+    }
+
+    .synthesis-content {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--tx-main);
+    }
+
+    .synthesis-content blockquote {
+      margin: 10px 0;
+      padding: 8px 14px;
+      background: rgba(0, 0, 0, 0.25);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      font-style: italic;
+      color: #e2e8f0;
+    }
+
+    /* BLIP Caption Card */
+    .blip-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .blip-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .blip-tag {
+      background: linear-gradient(135deg, #06b6d4, #0284c7);
+      color: #031c26;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+    }
+
+    .blip-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: #f1f5f9;
+    }
+
+    /* Section Subheadings */
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--tx-sub);
+      margin: 24px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Result Knowledge Items */
+    .retrieved-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .retrieved-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      transition: var(--transition);
+    }
+
+    .retrieved-card:hover {
+      border-color: rgba(99, 102, 241, 0.4);
+      background: var(--bg-card-hover);
+    }
+
+    .retrieved-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .animal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #c7d2fe;
+      text-transform: capitalize;
+    }
+
+    .score-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--ok);
+    }
+
+    .retrieved-text {
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: #cbd5e1;
+      margin-bottom: 12px;
+    }
+
+    .score-bar-bg {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .score-bar-fill {
+      height: 100%;
+      background: linear-gradient(to right, #6366f1, #06b6d4, #10b981);
+      border-radius: 4px;
+      transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .breakdown-row {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--tx-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .breakdown-row span b {
+      color: var(--tx-sub);
+    }
+
+    /* Images Grid */
+    .images-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .image-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: var(--transition);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .image-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .image-card-thumb {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      display: block;
+      background: #020617;
+    }
+
+    .image-card-body {
+      padding: 10px 12px;
+    }
+
+    .image-card-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--tx-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .image-card-score {
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    /* Latency Telemetry Bar */
+    .telemetry-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+      padding: 12px 18px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--tx-sub);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .telemetry-chips {
+      display: flex;
+      gap: 14px;
+    }
+
+    .telemetry-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .telemetry-chip span {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+
+    /* Knowledge Base Studio */
+    .kb-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--tx-muted);
+      font-weight: 600;
+    }
+
+    .stat-val {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--tx-main);
+      margin-top: 4px;
+    }
+
+    .kb-action-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .kb-search {
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .kb-list-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 10px;
+      transition: var(--transition);
+    }
+
+    .kb-list-item:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    .item-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--tx-sub);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 13px;
+      transition: var(--transition);
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+    }
+
+    .icon-btn.del:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    /* What Can It Do Showcase Section */
+    .guide-hero {
+      text-align: center;
+      max-width: 760px;
+      margin: 10px auto 36px;
+    }
+
+    .guide-hero h2 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .guide-hero p {
+      font-size: 16px;
+      color: var(--tx-sub);
+      line-height: 1.6;
+    }
+
+    /* Architecture Flow Diagram */
+    .arch-diagram {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 36px;
+      position: relative;
+    }
+
+    .arch-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      position: relative;
+    }
+
+    .arch-step-box {
+      background: rgba(9, 13, 22, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      position: relative;
+      transition: var(--transition);
+    }
+
+    .arch-step-box:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .arch-step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--pri);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 8px;
+    }
+
+    .arch-step-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--tx-main);
+      margin-bottom: 4px;
+    }
+
+    .arch-step-desc {
+      font-size: 12px;
+      color: var(--tx-sub);
+      line-height: 1.4;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      transition: var(--transition);
+    }
+
+    .feature-card:hover {
+      border-color: rgba(99, 102, 241, 0.4);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 16px;
+    }
+
+    .feature-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--tx-main);
+      margin-bottom: 8px;
+    }
+
+    .feature-desc {
+      font-size: 14px;
+      color: var(--tx-sub);
+      line-height: 1.6;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-box {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      max-width: 520px;
+      width: 100%;
+      padding: 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      animation: modalIn 0.25s ease;
+    }
+
+    @keyframes modalIn {
+      from {
+        transform: scale(0.95);
+        opacity: 0;
+      }
+
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .lightbox-img {
+      max-width: 90vw;
+      max-height: 80vh;
+      border-radius: 12px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
+      object-fit: contain;
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: #ffffff;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.3s ease;
+    }
+
+    @keyframes toastIn {
+      from {
+        transform: translateX(20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Helper utility classes */
+    .hide {
+      display: none !important;
+    }
+
+    .text-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Header -->
+  <header>
+    <a href="#" class="brand">
+      <div class="brand-icon">✨</div>
+      <div>
+        <h1>Multimodal RAG Studio</h1>
+      </div>
+      <span>CLIP + BLIP</span>
+    </a>
+
+    <div class="header-meta">
+      <div class="badge-pill status" id="statusPill">
+        <span class="badge-dot"></span>
+        <span id="systemStatus">Ready</span>
+      </div>
+      <div class="badge-pill text-mono" id="devicePill">
+        <span id="deviceText">CPU</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Top Navigation Tabs -->
+    <nav class="tabs-nav">
+      <button class="tab-btn active" data-tab="search">
+        🔍 Multimodal Search
+      </button>
+      <button class="tab-btn" data-tab="kb">
+        📚 Knowledge Studio
+      </button>
+      <button class="tab-btn" data-tab="capabilities">
+        💡 What Can It Do?
+      </button>
+      <button class="tab-btn" data-tab="system">
+        ⚙️ Telemetry & Models
+      </button>
+    </nav>
+
+    <!-- TAB 1: SEARCH -->
+    <section id="tab-search">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Cross-Modal Retrieval & Synthesis</div>
+            <div class="card-subtitle">Query with an image or natural language query across both visual and text
+              modalities.</div>
+          </div>
+          <!-- Submode switcher -->
+          <div class="search-switch">
+            <button class="switch-btn active" id="btnModeImg">🖼️ Image Input</button>
+            <button class="switch-btn" id="btnModeTxt">💬 Text Query</button>
+          </div>
+        </div>
+
+        <!-- IMAGE SEARCH PANEL -->
+        <div id="panelImage">
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-inner" id="dropzoneEmpty">
+              <div class="dropzone-icon">🖼️</div>
+              <div class="dropzone-text">Drop an image here or click to browse</div>
+              <div class="dropzone-hint">Supports JPG, PNG, WEBP · Paste anywhere with Ctrl+V</div>
+            </div>
+            <div id="dropzonePreview" class="hide">
+              <div class="preview-box">
+                <img id="previewImg" src="" alt="Query Preview">
+                <button class="preview-remove" id="btnRemoveImg" title="Clear image">✕</button>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="fileInput" accept="image/*" class="hide">
+
+          <!-- Preset Image Chips -->
+          <div class="presets-container">
+            <div class="presets-label">
+              <span>⚡ Try Sample Images:</span>
+            </div>
+            <div class="preset-chips" id="sampleImagesChips">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- TEXT SEARCH PANEL -->
+        <div id="panelText" class="hide">
+          <div class="search-input-box">
+            <input type="text" id="textQueryInput"
+              placeholder="e.g. Which animal can survive long periods in the desert without water?">
+            <button class="btn btn-pri" id="btnTextSearch">Search</button>
+          </div>
+
+          <!-- Preset Question Chips -->
+          <div class="presets-container">
+            <div class="presets-label">
+              <span>⚡ Quick Question Suggestions:</span>
+            </div>
+            <div class="preset-chips" id="sampleQueriesChips">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Shared Controls Bar -->
+        <div class="controls-row">
+          <div class="control-item">
+            <label for="topKInput">Top-K:</label>
+            <input type="number" id="topKInput" min="1" max="10" value="3" style="width: 68px;">
+          </div>
+
+          <div class="control-item" id="alphaControlWrap">
+            <label for="alphaSlider">Fusion Weight (α):</label>
+            <input type="range" id="alphaSlider" min="0" max="1" step="0.05" value="0.6">
+            <span class="text-mono" id="alphaValText">0.60</span>
+            <small style="color:var(--tx-muted); margin-left:4px;">(Visual vs. BLIP Caption)</small>
+          </div>
+
+          <div style="flex:1;"></div>
+
+          <div id="imageSearchBtnWrap">
+            <button class="btn btn-pri" id="btnImageSearch">
+              <span>Execute Multimodal Search</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULTS SECTION -->
+      <div id="resultsWrap" class="results-wrap hide">
+
+        <!-- Grounded AI Synthesis Card -->
+        <div class="synthesis-card" id="synthesisCard">
+          <div class="synthesis-header">
+            <span>✨</span>
+            <span>Grounded Multimodal RAG Synthesis</span>
+          </div>
+          <div class="synthesis-content" id="synthesisContent">
+            Analyzing context...
+          </div>
+        </div>
+
+        <!-- BLIP Caption Card (Image queries only) -->
+        <div class="blip-card hide" id="blipCard">
+          <div class="blip-info">
+            <span class="blip-tag">BLIP Vision Caption</span>
+            <span class="blip-text" id="blipCaptionText">...</span>
+          </div>
+          <button class="btn btn-sec" id="btnCopyCaption" style="padding:6px 12px; font-size:12px;">Copy
+            Caption</button>
+        </div>
+
+        <!-- Retrieved Knowledge Texts -->
+        <div class="section-title">
+          <span>📖 Top Retrieved Facts</span>
+          <span class="badge-pill text-mono" id="textsCountBadge">0 found</span>
+        </div>
+        <div class="retrieved-list" id="retrievedTextsList">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Retrieved Similar Images -->
+        <div class="section-title" style="margin-top: 32px;">
+          <span>🖼️ Visual Catalog Matches</span>
+          <span class="badge-pill text-mono" id="imagesCountBadge">0 found</span>
+        </div>
+        <div class="images-grid" id="retrievedImagesGrid">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Latency & Telemetry Bar -->
+        <div class="telemetry-bar" id="telemetryBar">
+          <div class="telemetry-chips">
+            <div class="telemetry-chip">⏱️ Total: <span id="telTotalMs">0 ms</span></div>
+            <div class="telemetry-chip" id="telBlipWrap">👁️ BLIP: <span id="telBlipMs">0 ms</span></div>
+            <div class="telemetry-chip">⚡ CLIP: <span id="telClipMs">0 ms</span></div>
+          </div>
+          <div style="color:var(--tx-muted);">Vector dimension: 512 · Metric: Softmax Calibrated + Cosine</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 2: KNOWLEDGE BASE STUDIO -->
+    <section id="tab-kb" class="hide">
+      <!-- Stats Row -->
+      <div class="kb-stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Knowledge Texts</div>
+          <div class="stat-val" id="statKbTexts">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Catalog Images</div>
+          <div class="stat-val" id="statKbImages">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Embedding Dimensions</div>
+          <div class="stat-val">512-D</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Vector Storage Mode</div>
+          <div class="stat-val" style="font-size:20px; font-weight:700; color:var(--accent);">In-Memory + JSON</div>
+        </div>
+      </div>
+
+      <!-- Action & Filter Bar -->
+      <div class="kb-action-bar">
+        <input type="text" id="kbFilterInput" class="kb-search"
+          placeholder="Filter knowledge entries by animal or keyword...">
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-sec" id="btnOpenAddText">➕ Add Text</button>
+          <button class="btn btn-sec" id="btnOpenAddImage">🖼️ Add Image</button>
+          <button class="btn btn-sec" id="btnExportKb" title="Export as JSON">📥 Export</button>
+          <button class="btn btn-danger" id="btnResetKb" title="Restore default seed">🔄 Reset Seed</button>
+        </div>
+      </div>
+
+      <!-- Texts Section -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📖 Knowledge Base Facts (<span id="kbTextsCount">0</span>)</div>
+        </div>
+        <div id="kbTextsList">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- Images Section -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🖼️ Catalog Images (<span id="kbImagesCount">0</span>)</div>
+        </div>
+        <div class="images-grid" id="kbImagesGrid">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: WHAT CAN IT DO? (SHOWCASE & ARCHITECTURE) -->
+    <section id="tab-capabilities" class="hide">
+      <div class="guide-hero">
+        <h2>What Can This Multimodal RAG Do?</h2>
+        <p>A unified vision-language AI system uniting <b>CLIP</b> (contrastive semantic embeddings) and <b>BLIP</b>
+          (neural image captioning) for zero-shot cross-modal retrieval, multimodal grounding, and real-time knowledge
+          synthesis.</p>
+      </div>
+
+      <!-- Pipeline Diagram -->
+      <div class="arch-diagram">
+        <div style="font-size:15px; font-weight:700; color:#cbd5e1; margin-bottom:18px; text-align:center;">
+          ⚡ Architecture Pipeline
+        </div>
+        <div class="arch-steps">
+          <div class="arch-step-box">
+            <div class="arch-step-num">1</div>
+            <div class="arch-step-title">Multimodal Input</div>
+            <div class="arch-step-desc">Accepts query image or natural text prompt.</div>
+          </div>
+          <div class="arch-step-box">
+            <div class="arch-step-num">2</div>
+            <div class="arch-step-title">BLIP Captioning</div>
+            <div class="arch-step-desc">Neural vision encoder describes scene details into descriptive text.</div>
+          </div>
+          <div class="arch-step-box">
+            <div class="arch-step-num">3</div>
+            <div class="arch-step-title">CLIP Embeddings</div>
+            <div class="arch-step-desc">Projects images and texts into shared 512-dim latent space.</div>
+          </div>
+          <div class="arch-step-box">
+            <div class="arch-step-num">4</div>
+            <div class="arch-step-title">α-Fusion Ranking</div>
+            <div class="arch-step-desc">Fuses visual features with caption semantics via tunable α weights.</div>
+          </div>
+          <div class="arch-step-box">
+            <div class="arch-step-num">5</div>
+            <div class="arch-step-title">RAG Synthesis</div>
+            <div class="arch-step-desc">Augments retrieved knowledge into grounded, verified AI answers.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 Key Capabilities Grid -->
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon-box">🖼️</div>
+          <div class="feature-title">1. Cross-Modal Image Retrieval</div>
+          <div class="feature-desc">Upload any photograph and instantly retrieve relevant factual text and catalog
+            images without any manual metadata or tagging. The system connects visual pixels directly to semantic
+            concepts.</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">💬</div>
+          <div class="feature-title">2. Natural Language Text Search</div>
+          <div class="feature-desc">Search using questions, attributes, or natural descriptions like <i>"animal that
+              lives in the desert"</i> to retrieve both relevant encyclopedia facts and matching photographic catalog
+            images.</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">🧠</div>
+          <div class="feature-title">3. Grounded Multimodal Synthesis (The 'G' in RAG)</div>
+          <div class="feature-desc">Eliminates hallucinations. Instead of making up ungrounded facts, the system
+            synthesizes explanations directly anchored in the verified vector knowledge base with source attribution.
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">⚖️</div>
+          <div class="feature-title">4. Tunable Alpha (α) Fusion</div>
+          <div class="feature-desc">Adjust the fusion balance between raw perceptual visual features (α = 1.0) and
+            high-level semantic caption interpretation (α = 0.0) in real time to suit fine-grained or conceptual
+            searches.</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">🗃️</div>
+          <div class="feature-title">5. Dynamic Zero-Downtime Vector Store</div>
+          <div class="feature-desc">Add, edit, or delete knowledge facts and catalog photos at runtime. Embeddings are
+            generated on-the-fly and immediately searchable with zero server restarts required.</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">🚀</div>
+          <div class="feature-title">6. Performance Telemetry & Profiling</div>
+          <div class="feature-desc">Get microsecond-accurate breakdown of neural generation latency, matrix similarity
+            operations, and hardware acceleration status (CUDA GPU / CPU).</div>
+        </div>
+      </div>
+
+      <div style="text-align:center; margin-top:36px;">
+        <button class="btn btn-pri" id="btnQuickDemoLaunch" style="padding:14px 28px; font-size:15px;">
+          🚀 Try Live Interactive Search Now
+        </button>
+      </div>
+    </section>
+
+    <!-- TAB 4: SYSTEM & TELEMETRY -->
+    <section id="tab-system" class="hide">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚙️ System Architecture & Telemetry</div>
+          <button class="btn btn-sec" id="btnRefreshSystem">Refresh</button>
+        </div>
+        <div id="systemMetricsGrid"
+          style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODALS -->
+  <!-- 1. Add Text Modal -->
+  <div class="modal-backdrop hide" id="modalAddText">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="card-title">➕ Add Knowledge Fact</div>
+        <button class="preview-remove" style="position:static;" onclick="closeModal('modalAddText')">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:13px; font-weight:600; color:var(--tx-sub); margin-bottom:4px; display:block;">Animal
+            / Entity Name</label>
+          <input type="text" id="modalTextAnimal" placeholder="e.g. Cheetah" style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:13px; font-weight:600; color:var(--tx-sub); margin-bottom:4px; display:block;">Fact /
+            Description</label>
+          <textarea id="modalTextContent" rows="4"
+            placeholder="Enter factual description (CLIP reads up to 77 tokens)..." style="width:100%;"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button class="btn btn-sec" onclick="closeModal('modalAddText')">Cancel</button>
+          <button class="btn btn-pri" id="btnSubmitAddText">Save Fact</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Add Image Modal -->
+  <div class="modal-backdrop hide" id="modalAddImage">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="card-title">🖼️ Add Catalog Image</div>
+        <button class="preview-remove" style="position:static;" onclick="closeModal('modalAddImage')">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:13px; font-weight:600; color:var(--tx-sub); margin-bottom:4px; display:block;">Select
+            Image File</label>
+          <input type="file" id="modalImageFile" accept="image/*" style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:13px; font-weight:600; color:var(--tx-sub); margin-bottom:4px; display:block;">Label /
+            Name</label>
+          <input type="text" id="modalImageLabel" placeholder="e.g. Cheetah running" style="width:100%;">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button class="btn btn-sec" onclick="closeModal('modalAddImage')">Cancel</button>
+          <button class="btn btn-pri" id="btnSubmitAddImage">Upload & Index</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Edit Text Modal -->
+  <div class="modal-backdrop hide" id="modalEditText">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="card-title">✏️ Edit Knowledge Fact</div>
+        <button class="preview-remove" style="position:static;" onclick="closeModal('modalEditText')">✕</button>
+      </div>
+      <input type="hidden" id="editItemIid">
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:13px; font-weight:600; color:var(--tx-sub); margin-bottom:4px; display:block;">Animal
+            / Entity</label>
+          <input type="text" id="editTextAnimal" style="width:100%;">
+        </div>
+        <div>
+          <label
+            style="font-size:13px; font-weight:600; color:var(--tx-sub); margin-bottom:4px; display:block;">Description</label>
+          <textarea id="editTextContent" rows="4" style="width:100%;"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button class="btn btn-sec" onclick="closeModal('modalEditText')">Cancel</button>
+          <button class="btn btn-pri" id="btnSubmitEditText">Update Fact</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Lightbox Modal -->
+  <div class="modal-backdrop hide" id="modalLightbox" onclick="closeModal('modalLightbox')">
+    <img id="lightboxImg" class="lightbox-img" src="" alt="Full view" onclick="event.stopPropagation()">
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // State
+    const state = {
+      searchMode: 'img', // 'img' | 'txt'
+      currentFile: null,
+      kbData: { texts: [], images: [] },
+      systemData: null,
+      samples: null
+    };
+
+    // Helpers
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const pct = s => (Number(s || 0) * 100).toFixed(1) + "%";
+
+    function toast(msg, type = 'info') {
+      const container = $('toastContainer');
+      const el = document.createElement('div');
+      el.className = 'toast';
+      const icon = type === 'ok' ? '✅' : type === 'err' ? '⚠️' : 'ℹ️';
+      el.innerHTML = `<span>${icon}</span> <span>${esc(msg)}</span>`;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(10px)';
+        el.style.transition = 'all 0.3s ease';
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    async function api(path, opts = {}) {
+      try {
+        const res = await fetch(path, opts);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Request failed (${res.status})`);
+        }
+        return await res.json();
+      } catch (err) {
+        console.error('API Error:', err);
+        throw err;
+      }
+    }
+
+    function closeModal(id) {
+      $(id).classList.add('hide');
+    }
+
+    function openModal(id) {
+      $(id).classList.remove('hide');
+    }
+
+    // Tab Navigation
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        ['search', 'kb', 'capabilities', 'system'].forEach(t => {
+          $('tab-' + t).classList.toggle('hide', t !== tab);
+        });
+        if (tab === 'kb') loadKB();
+        if (tab === 'system') loadSystem();
+      });
+    });
+
+    $('btnQuickDemoLaunch')?.addEventListener('click', () => {
+      document.querySelector('[data-tab="search"]').click();
+    });
+
+    // Search Mode Switcher (Image vs Text)
+    $('btnModeImg').onclick = () => setMode('img');
+    $('btnModeTxt').onclick = () => setMode('txt');
+
+    function setMode(mode) {
+      state.searchMode = mode;
+      $('btnModeImg').classList.toggle('active', mode === 'img');
+      $('btnModeTxt').classList.toggle('active', mode === 'txt');
+      $('panelImage').classList.toggle('hide', mode !== 'img');
+      $('panelText').classList.toggle('hide', mode !== 'txt');
+      $('alphaControlWrap').style.display = mode === 'img' ? 'flex' : 'none';
+      $('imageSearchBtnWrap').style.display = mode === 'img' ? 'block' : 'none';
+    }
+
+    // Dropzone & File Handling
+    const dropzone = $('dropzone');
+    dropzone.onclick = (e) => {
+      if (e.target.id === 'btnRemoveImg') return;
+      $('fileInput').click();
+    };
+
+    $('fileInput').onchange = (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFile(e.target.files[0]);
+      }
+    };
+
+    dropzone.ondragover = (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    };
+    dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+    dropzone.ondrop = (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    };
+
+    // Paste from clipboard support
+    window.addEventListener('paste', (e) => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (const item of items) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          setMode('img');
+          handleFile(file);
+          toast("Pasted image from clipboard!", "ok");
+          break;
+        }
+      }
+    });
+
+    function handleFile(file) {
+      state.currentFile = file;
+      const url = URL.createObjectURL(file);
+      $('previewImg').src = url;
+      $('dropzoneEmpty').classList.add('hide');
+      $('dropzonePreview').classList.remove('hide');
+    }
+
+    $('btnRemoveImg').onclick = (e) => {
+      e.stopPropagation();
+      state.currentFile = null;
+      $('previewImg').src = '';
+      $('dropzonePreview').classList.add('hide');
+      $('dropzoneEmpty').classList.remove('hide');
+      $('fileInput').value = '';
+    };
+
+    // Alpha Slider
+    $('alphaSlider').oninput = () => {
+      const val = Number($('alphaSlider').value).toFixed(2);
+      $('alphaValText').textContent = val;
+    };
+
+    // Execute Image Search
+    $('btnImageSearch').onclick = async () => {
+      if (!state.currentFile) {
+        toast("Please select or drop an image first!", "err");
+        return;
+      }
+      const btn = $('btnImageSearch');
+      btn.disabled = true;
+      btn.innerHTML = `<span>⏳ Searching...</span>`;
+
+      try {
+        const fd = new FormData();
+        fd.append('file', state.currentFile);
+        fd.append('k', $('topKInput').value || '3');
+        fd.append('alpha', $('alphaSlider').value || '0.6');
+
+        const res = await api('/api/search/image', { method: 'POST', body: fd });
+        renderResults(res, true);
+        toast("Multimodal search complete!", "ok");
+      } catch (err) {
+        toast(err.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Execute Multimodal Search</span>`;
+      }
+    };
+
+    // Execute Text Search
+    $('btnTextSearch').onclick = async () => {
+      const q = $('textQueryInput').value.trim();
+      if (!q) {
+        toast("Please enter a search query!", "err");
+        return;
+      }
+      const btn = $('btnTextSearch');
+      btn.disabled = true;
+      btn.textContent = "Searching...";
+
+      try {
+        const body = { query: q, k: parseInt($('topKInput').value) || 3 };
+        const res = await api('/api/search/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        renderResults(res, false);
+        toast("Semantic text search complete!", "ok");
+      } catch (err) {
+        toast(err.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Search";
+      }
+    };
+
+    $('textQueryInput').onkeydown = (e) => {
+      if (e.key === 'Enter') $('btnTextSearch').click();
+    };
+
+    // Render Search Results
+    function renderResults(res, isImage) {
+      $('resultsWrap').classList.remove('hide');
+      $('resultsWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // 1. Grounded Synthesis
+      if (res.synthesis) {
+        $('synthesisCard').classList.remove('hide');
+        // Render simple markdown paragraphs & bold
+        let html = esc(res.synthesis)
+          .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+          .replace(/\*(.*?)\*/g, '<i>$1</i>')
+          .replace(/&gt; (.*?)\n/g, '<blockquote>$1</blockquote>')
+          .replace(/\n\n/g, '<br><br>');
+        $('synthesisContent').innerHTML = html;
+      } else {
+        $('synthesisCard').classList.add('hide');
+      }
+
+      // 2. BLIP Caption
+      if (res.caption && isImage) {
+        $('blipCard').classList.remove('hide');
+        $('blipCaptionText').textContent = res.caption;
+        $('btnCopyCaption').onclick = () => {
+          navigator.clipboard.writeText(res.caption);
+          toast("Caption copied to clipboard!", "ok");
+        };
+      } else {
+        $('blipCard').classList.add('hide');
+      }
+
+      // 3. Retrieved Texts
+      $('textsCountBadge').textContent = `${res.texts?.length || 0} matched`;
+      const tList = $('retrievedTextsList');
+      if (res.texts && res.texts.length > 0) {
+        tList.innerHTML = res.texts.map(t => {
+          const scorePercent = (t.score * 100).toFixed(1);
+          const hasBreakdown = t.visual_sim !== undefined;
+          return `
+            <div class="retrieved-card">
+              <div class="retrieved-head">
+                <span class="animal-badge">🐾 ${esc(t.animal)}</span>
+                <span class="score-badge">${pct(t.score)}</span>
+              </div>
+              <div class="retrieved-text">${esc(t.text)}</div>
+              <div class="score-bar-bg">
+                <div class="score-bar-fill" style="width: ${Math.min(100, scorePercent)}%;"></div>
+              </div>
+              <div class="breakdown-row">
+                <span>Cosine Sim: <b>${t.cosine_sim}</b></span>
+                ${hasBreakdown ? `<span>Visual: <b>${t.visual_sim}</b></span><span>Caption: <b>${t.caption_sim}</b></span>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        tList.innerHTML = `<p style="color:var(--tx-muted); padding:12px;">No knowledge base facts matched this query.</p>`;
+      }
+
+      // 4. Retrieved Images
+      $('imagesCountBadge').textContent = `${res.images?.length || 0} matched`;
+      const iGrid = $('retrievedImagesGrid');
+      if (res.images && res.images.length > 0) {
+        iGrid.innerHTML = res.images.map(img => `
+          <div class="image-card" onclick="openLightbox('${img.url}')">
+            <img class="image-card-thumb" src="${img.url}" alt="${esc(img.label)}" loading="lazy">
+            <div class="image-card-body">
+              <div class="image-card-label">
+                <span>${esc(img.label)}</span>
+                <span class="image-card-score">${pct(img.score)}</span>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        iGrid.innerHTML = `<p style="color:var(--tx-muted); padding:12px;">No catalog images matched.</p>`;
+      }
+
+      // 5. Latency Telemetry
+      if (res.latency) {
+        $('telTotalMs').textContent = `${res.latency.total_ms} ms`;
+        $('telClipMs').textContent = `${res.latency.clip_ms} ms`;
+        if (res.latency.blip_ms !== undefined) {
+          $('telBlipWrap').classList.remove('hide');
+          $('telBlipMs').textContent = `${res.latency.blip_ms} ms`;
+        } else {
+          $('telBlipWrap').classList.add('hide');
+        }
+      }
+    }
+
+    function openLightbox(url) {
+      $('lightboxImg').src = url;
+      openModal('modalLightbox');
+    }
+
+    // Load Knowledge Base
+    async function loadKB() {
+      try {
+        const d = await api('/api/kb');
+        state.kbData = d;
+        $('statKbTexts').textContent = d.texts.length;
+        $('statKbImages').textContent = d.images.length;
+        $('kbTextsCount').textContent = d.texts.length;
+        $('kbImagesCount').textContent = d.images.length;
+        renderKBLists(d);
+      } catch (err) {
+        toast("Failed to load knowledge base: " + err.message, "err");
+      }
+    }
+
+    function renderKBLists(d, filter = '') {
+      const q = filter.toLowerCase().trim();
+
+      // Texts list
+      const filteredTexts = d.texts.filter(t => !q || t.animal.toLowerCase().includes(q) || t.text.toLowerCase().includes(q));
+      $('kbTextsList').innerHTML = filteredTexts.map(t => `
+        <div class="kb-list-item">
+          <div style="flex:1;">
+            <div style="margin-bottom:4px;">
+              <span class="animal-badge">${esc(t.animal)}</span>
+            </div>
+            <div style="font-size:14px; color:#cbd5e1; line-height:1.5;">${esc(t.text)}</div>
+          </div>
+          <div class="item-actions">
+            <button class="icon-btn" onclick="startEditText('${t.id}')" title="Edit Fact">✏️</button>
+            <button class="icon-btn del" onclick="delItem('texts', '${t.id}')" title="Delete Fact">✕</button>
+          </div>
+        </div>
+      `).join('') || '<p style="color:var(--tx-muted); padding:12px;">No matching facts found.</p>';
+
+      // Images grid
+      const filteredImages = d.images.filter(i => !q || i.label.toLowerCase().includes(q));
+      $('kbImagesGrid').innerHTML = filteredImages.map(img => `
+        <div class="image-card">
+          <img class="image-card-thumb" src="${img.url}" alt="${esc(img.label)}" onclick="openLightbox('${img.url}')">
+          <div class="image-card-body">
+            <div class="image-card-label">
+              <span>${esc(img.label)}</span>
+              <button class="icon-btn del" style="width:24px; height:24px; font-size:11px;" onclick="delItem('images', '${img.id}')" title="Delete Image">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('') || '<p style="color:var(--tx-muted); padding:12px;">No images in catalog.</p>';
+    }
+
+    $('kbFilterInput').oninput = () => {
+      renderKBLists(state.kbData, $('kbFilterInput').value);
+    };
+
+    // Add Text Handlers
+    $('btnOpenAddText').onclick = () => {
+      $('modalTextAnimal').value = '';
+      $('modalTextContent').value = '';
+      openModal('modalAddText');
+    };
+
+    $('btnSubmitAddText').onclick = async () => {
+      const animal = $('modalTextAnimal').value.trim();
+      const text = $('modalTextContent').value.trim();
+      if (!animal || !text) {
+        toast("Please provide both entity name and description", "err");
+        return;
+      }
+      try {
+        await api('/api/kb/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ animal, text })
+        });
+        closeModal('modalAddText');
+        toast("Knowledge fact added and indexed!", "ok");
+        loadKB();
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    };
+
+    // Add Image Handlers
+    $('btnOpenAddImage').onclick = () => {
+      $('modalImageFile').value = '';
+      $('modalImageLabel').value = '';
+      openModal('modalAddImage');
+    };
+
+    $('btnSubmitAddImage').onclick = async () => {
+      const file = $('modalImageFile').files[0];
+      const label = $('modalImageLabel').value.trim();
+      if (!file || !label) {
+        toast("Please select an image and enter a label", "err");
+        return;
+      }
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('label', label);
+        await api('/api/kb/image', { method: 'POST', body: fd });
+        closeModal('modalAddImage');
+        toast("Image uploaded and embedded into catalog!", "ok");
+        loadKB();
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    };
+
+    // Edit Text Handlers
+    window.startEditText = function (iid) {
+      const item = state.kbData.texts.find(t => t.id === iid);
+      if (!item) return;
+      $('editItemIid').value = iid;
+      $('editTextAnimal').value = item.animal;
+      $('editTextContent').value = item.text;
+      openModal('modalEditText');
+    };
+
+    $('btnSubmitEditText').onclick = async () => {
+      const iid = $('editItemIid').value;
+      const animal = $('editTextAnimal').value.trim();
+      const text = $('editTextContent').value.trim();
+      if (!animal || !text) return;
+      try {
+        await api(`/api/kb/text/${iid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ animal, text })
+        });
+        closeModal('modalEditText');
+        toast("Fact updated & re-embedded!", "ok");
+        loadKB();
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    };
+
+    // Delete Item
+    window.delItem = async function (kind, iid) {
+      if (!confirm(`Delete this ${kind === 'texts' ? 'fact' : 'image'} from the knowledge base?`)) return;
+      try {
+        await api(`/api/kb/${kind}/${iid}`, { method: 'DELETE' });
+        toast("Item deleted", "info");
+        loadKB();
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    };
+
+    // Reset Seed
+    $('btnResetKb').onclick = async () => {
+      if (!confirm("Reset knowledge base to original animal facts seed?")) return;
+      try {
+        await api('/api/kb/reset', { method: 'POST' });
+        toast("Knowledge base reset to seed defaults!", "ok");
+        loadKB();
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    };
+
+    // Export KB JSON
+    $('btnExportKb').onclick = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.kbData, null, 2));
+      const dlAnchor = document.createElement('a');
+      dlAnchor.setAttribute("href", dataStr);
+      dlAnchor.setAttribute("download", "multimodal_kb_export.json");
+      dlAnchor.click();
+    };
+
+    // Load System Telemetry
+    async function loadSystem() {
+      try {
+        const sys = await api('/api/system');
+        state.systemData = sys;
+        $('deviceText').textContent = sys.device.toUpperCase();
+
+        $('systemMetricsGrid').innerHTML = `
+          <div class="stat-card">
+            <div class="stat-label">Inference Device</div>
+            <div class="stat-val" style="color:#38bdf8;">${sys.device.toUpperCase()}</div>
+            <div style="font-size:12px; color:var(--tx-muted); margin-top:4px;">CUDA available: ${sys.cuda_available}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Vision-Language Model</div>
+            <div class="stat-val" style="font-size:17px; margin-top:8px;">CLIP ViT-B/32</div>
+            <div style="font-size:11px; color:var(--tx-muted); margin-top:4px;">${sys.clip_model}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Vision Captioner</div>
+            <div class="stat-val" style="font-size:17px; margin-top:8px;">BLIP Base</div>
+            <div style="font-size:11px; color:var(--tx-muted); margin-top:4px;">${sys.blip_model}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Embedding Dimensions</div>
+            <div class="stat-val" style="color:var(--ok);">${sys.clip_dim} dims</div>
+            <div style="font-size:12px; color:var(--tx-muted); margin-top:4px;">Normalized unit sphere</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Softmax Logit Scale</div>
+            <div class="stat-val">${sys.logit_scale}</div>
+            <div style="font-size:12px; color:var(--tx-muted); margin-top:4px;">Confidence calibration</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Indexed Knowledge Count</div>
+            <div class="stat-val">${sys.total_texts} texts · ${sys.total_images} imgs</div>
+            <div style="font-size:12px; color:var(--tx-muted); margin-top:4px;">In-memory matrix dot-product</div>
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    $('btnRefreshSystem').onclick = loadSystem;
+
+    // Load Samples (Preset Chips)
+    async function loadSamples() {
+      try {
+        const s = await api('/api/samples');
+        state.samples = s;
+
+        // Image chips
+        const imgChips = $('sampleImagesChips');
+        if (s.images && s.images.length > 0) {
+          imgChips.innerHTML = s.images.map(img => `
+            <div class="preset-chip" onclick="useSampleImage('${img.url}')">
+              <img src="${img.url}" alt="${esc(img.label)}">
+              <span>${esc(img.label)}</span>
+            </div>
+          `).join('');
+        }
+
+        // Query chips
+        const qChips = $('sampleQueriesChips');
+        if (s.queries && s.queries.length > 0) {
+          qChips.innerHTML = s.queries.map(q => `
+            <div class="preset-chip" onclick="useSampleQuery('${esc(q)}')">
+              <span>💡 ${esc(q)}</span>
+            </div>
+          `).join('');
+        }
+      } catch (err) {
+        console.warn('Samples load warning:', err);
+      }
+    }
+
+    window.useSampleQuery = function (q) {
+      $('textQueryInput').value = q;
+      $('btnTextSearch').click();
+    };
+
+    window.useSampleImage = async function (url) {
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const file = new File([blob], url.split('/').pop(), { type: blob.type || 'image/jpeg' });
+        setMode('img');
+        handleFile(file);
+        $('btnImageSearch').click();
+      } catch (err) {
+        toast("Failed to load sample image: " + err.message, "err");
+      }
+    };
+
+    // Initial Startup
+    (async function init() {
+      try {
+        await Promise.all([loadSystem(), loadKB(), loadSamples()]);
+        $('systemStatus').textContent = "Online";
+      } catch (e) {
+        $('systemStatus').textContent = "Degraded";
+        $('statusPill').classList.remove('status');
+      }
+    })();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,33 @@
+# Python byte code and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & secrets
+.env
+.env.local
+.env.*.local
+venv/
+.venv/
+env/
+ENV/
+
+# Large media files (videos)
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary directories and caches
+.cache/
+chroma_db/
